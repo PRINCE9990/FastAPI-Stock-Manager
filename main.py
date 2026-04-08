@@ -2,6 +2,9 @@ from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
 import models # Hamari models.py file
 from database import SessionLocal, engine # Hamari database.py file
+import schemas
+from typing import List
+from fastapi import HTTPException
 
 # 1. Database Table Create Karo (Ye line file bana degi)
 models.Base.metadata.create_all(bind=engine)
@@ -16,23 +19,23 @@ def get_db():
     finally:
         db.close()
 
-@app.get("/stock/")
+@app.get("/stock/",response_model = List[schemas.StockResponse])
 def get_stock(db : Session = Depends(get_db)):
     all_stocks = db.query(models.Stock).all()
-    return {"data":all_stocks}
-@app.post("/add-stock/")
-def add_stock(name: str,price: int, db: Session = Depends(get_db)):
-    new_data = models.Stock(name= name.upper(),price = price)
-    db.add(new_data)
+    return all_stocks
+@app.post("/add-stock/", response_model=schemas.StockResponse)
+def add_stock(stock = schemas.StockCreate, db: Session = Depends(get_db)):
+    new_stock = models.Stock(name= stock.name.upper(),price = stock.price)
+    db.add(new_stock)
     db.commit()
-    return {"status":"Success","saved_data":new_data}
-@app.get("/search/{name}")
+    db.refresh(new_stock)
+    return new_stock
+@app.get("/search/{name}", response_model = schemas.StockResponse)
 def search(name: str , db:Session = Depends(get_db)):
     stock = db.query(models.Stock).filter(models.Stock.name == name.upper()).first()
-    if stock:
-        return{"status":f"success we've found stock {stock.name}","price":stock.price} 
-    else:
-        return {"message":"not exist"}
+    if not stock:
+        raise HTTPException(status_code=404, detail="Stock not found") 
+    return stock
 @app.delete("/delete/{name}")
 def delete(name:str, db :Session = Depends(get_db)):
     stock = db.query(models.Stock).filter(models.Stock.name == name.upper()).first()
